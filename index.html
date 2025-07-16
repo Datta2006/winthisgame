@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Pixel Prince</title>
+    <title>The Pixel Prince - Fixed Jump</title>
     <style>
         * {
             margin: 0;
@@ -594,7 +594,11 @@
             timeStarted: Date.now(),
             mobileLeft: false,
             mobileRight: false,
-            mobileJump: false
+            mobileJump: false,
+            // NEW: Jump buffer variables
+            jumpRequested: false,
+            coyoteTime: 0,
+            jumpBuffer: 0
         };
         
         const GRAVITY = 0.5;
@@ -604,6 +608,9 @@
         const DASH_DURATION = 15;
         const WORLD_WIDTH = 2000;
         const CAMERA_OFFSET = 400;
+        // NEW: Jump buffer constants
+        const COYOTE_TIME_MAX = 10; // frames
+        const JUMP_BUFFER_MAX = 8; // frames
         
         // Initialize enemies
         const enemyElements = document.querySelectorAll('.enemy');
@@ -641,9 +648,10 @@
             
             keys[e.key.toLowerCase()] = true;
             
-            // Jump
-            if ((e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') && gameState.onGround && gameState.gameRunning && !gameState.isPaused) {
-                jump();
+            // Jump - only set flag now, actual jump handled in update
+            if ((e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') && gameState.gameRunning && !gameState.isPaused) {
+                gameState.jumpRequested = true;
+                gameState.jumpBuffer = JUMP_BUFFER_MAX;
             }
             
             // Dash
@@ -679,8 +687,9 @@
         
         jumpBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            if (gameState.onGround && gameState.gameRunning && !gameState.isPaused) {
-                jump();
+            if (gameState.gameRunning && !gameState.isPaused) {
+                gameState.jumpRequested = true;
+                gameState.jumpBuffer = JUMP_BUFFER_MAX;
             }
             gameState.mobileJump = true;
         });
@@ -701,6 +710,11 @@
             
             // Jump particles
             createParticles(gameState.playerX + 16, gameState.playerY + 32, '#FFD700', 5);
+            
+            // Reset jump flags
+            gameState.jumpRequested = false;
+            gameState.coyoteTime = 0;
+            gameState.jumpBuffer = 0;
         }
         
         function dash() {
@@ -782,6 +796,27 @@
                 gameState.playerY = 568;
                 gameState.velocityY = 0;
                 gameState.onGround = true;
+            }
+            
+            // NEW: Coyote time - allow jumping shortly after leaving a platform
+            if (gameState.onGround) {
+                gameState.coyoteTime = COYOTE_TIME_MAX;
+            } else {
+                if (gameState.coyoteTime > 0) {
+                    gameState.coyoteTime--;
+                }
+            }
+            
+            // NEW: Handle jump buffer
+            if (gameState.jumpRequested && gameState.jumpBuffer > 0) {
+                gameState.jumpBuffer--;
+                
+                // Check if we can jump (either on ground or in coyote time)
+                if (gameState.onGround || gameState.coyoteTime > 0) {
+                    jump();
+                }
+            } else if (gameState.jumpBuffer > 0) {
+                gameState.jumpBuffer--;
             }
             
             // Update player position
@@ -1025,7 +1060,6 @@
                         scoreElement.textContent = gameState.score;
                         
                         // Enemy death particles
-                                                // Enemy death particles
                         createParticles(
                             enemyRect.x + 14, 
                             enemyRect.y + 14, 
@@ -1227,7 +1261,11 @@
                 timeStarted: Date.now(),
                 mobileLeft: false,
                 mobileRight: false,
-                mobileJump: false
+                mobileJump: false,
+                // NEW: Jump buffer variables
+                jumpRequested: false,
+                coyoteTime: 0,
+                jumpBuffer: 0
             };
             
             // Reset UI
