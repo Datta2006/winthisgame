@@ -869,7 +869,7 @@
         }
         
         function checkCollectibles() {
-            const coins = document.querySelectorAll('.coin');
+            const coins = document.querySelectorAll('.coin:not(.collected)');
             
             coins.forEach(coin => {
                 const coinRect = {
@@ -884,8 +884,10 @@
                     gameState.playerY < coinRect.y + coinRect.height &&
                     gameState.playerY + 32 > coinRect.y) {
                     
+                    // Mark coin as collected
+                    coin.classList.add('collected');
+                    
                     // Collect coin
-                    coin.remove();
                     gameState.score += 100;
                     gameState.coinsCollected++;
                     scoreElement.textContent = gameState.score;
@@ -913,7 +915,10 @@
                         10
                     );
                     
-                    setTimeout(() => scorePopup.remove(), 1000);
+                    setTimeout(() => {
+                        coin.remove();
+                        scorePopup.remove();
+                    }, 1000);
                 }
             });
         }
@@ -971,7 +976,7 @@
             if (gameState.invulnerable || gameState.dashCooldown > 0) return;
             
             const spikes = document.querySelectorAll('.spike');
-            const enemies = document.querySelectorAll('.enemy');
+            const enemies = document.querySelectorAll('.enemy:not(.defeated)');
             
             // Check spike collisions
             spikes.forEach(spike => {
@@ -1012,25 +1017,67 @@
                         gameState.velocityY = JUMP_FORCE * 0.8;
                         gameState.onGround = false;
                         
+                        // Mark enemy as defeated
+                        enemy.classList.add('defeated');
+                        
                         // Enemy death
-                        enemy.remove();
                         gameState.score += 200;
                         scoreElement.textContent = gameState.score;
                         
                         // Enemy death particles
+                                                // Enemy death particles
                         createParticles(
                             enemyRect.x + 14, 
                             enemyRect.y + 14, 
-                            '#9400D3', 
+                            '#8B008B', 
                             15
                         );
                         
-                                                gameState.enemies = gameState.enemies.filter(e => e.element !== enemy);
+                        // Remove enemy after a delay
+                        setTimeout(() => enemy.remove(), 300);
                     } else {
                         takeDamage();
                     }
                 }
             });
+        }
+        
+        function checkWinCondition() {
+            const flag = document.querySelector('.flag');
+            const flagRect = {
+                x: parseInt(flag.style.left),
+                y: parseInt(flag.style.top),
+                width: 40,
+                height: 60
+            };
+            
+            if (gameState.playerX < flagRect.x + flagRect.width &&
+                gameState.playerX + 32 > flagRect.x &&
+                gameState.playerY < flagRect.y + flagRect.height &&
+                gameState.playerY + 32 > flagRect.y) {
+                
+                // Calculate time bonus
+                const timeElapsed = (Date.now() - gameState.timeStarted) / 1000;
+                const timeBonus = Math.max(0, 5000 - Math.floor(timeElapsed * 10));
+                gameState.score += timeBonus;
+                
+                // Win the game
+                gameState.gameRunning = false;
+                document.getElementById('winScore').textContent = gameState.score;
+                gameWinScreen.style.display = 'block';
+                
+                // Win celebration particles
+                for (let i = 0; i < 50; i++) {
+                    setTimeout(() => {
+                        createParticles(
+                            flagRect.x + 20, 
+                            flagRect.y + 30, 
+                            ['#FFD700', '#FF0000', '#00FF00', '#0000FF'][Math.floor(Math.random() * 4)], 
+                            3
+                        );
+                    }, i * 100);
+                }
+            }
         }
         
         function takeDamage() {
@@ -1044,8 +1091,12 @@
             player.style.opacity = '0.5';
             
             // Knockback effect
-            gameState.velocityX = gameState.playerX < 400 ? -8 : 8;
-            gameState.velocityY = -5;
+            gameState.velocityY = -8;
+            gameState.velocityX = (gameState.playerX < CAMERA_OFFSET + 400) ? 5 : -5;
+            
+            // Damage shake effect
+            gameWorld.style.animation = 'shake 0.3s';
+            setTimeout(() => gameWorld.style.animation = '', 300);
             
             // Damage particles
             createParticles(
@@ -1055,17 +1106,12 @@
                 10
             );
             
-            // Screen shake effect
-            gameWorld.style.animation = 'shake 0.3s linear';
-            setTimeout(() => {
-                gameWorld.style.animation = '';
-            }, 300);
-            
             setTimeout(() => {
                 player.style.opacity = '1';
                 gameState.invulnerable = false;
-            }, 1000);
+            }, 1500);
             
+            // Check if game over
             if (gameState.health <= 0) {
                 gameOver();
             }
@@ -1078,7 +1124,7 @@
                     heart.style.opacity = '1';
                     heart.style.transform = 'scale(1)';
                 } else {
-                    heart.style.opacity = '0.5';
+                    heart.style.opacity = '0.3';
                     heart.style.transform = 'scale(0.8)';
                 }
             });
@@ -1089,13 +1135,13 @@
         }
         
         function updateEnemies() {
-            if (!gameState.gameRunning || gameState.isPaused) return;
-            
             gameState.enemies.forEach(enemy => {
-                // Patrol movement
+                if (enemy.element.classList.contains('defeated')) return;
+                
+                // Move enemy back and forth
                 enemy.x += enemy.direction * enemy.speed;
                 
-                // Reverse direction if reached patrol limit
+                // Check patrol boundaries
                 if (Math.abs(enemy.x - enemy.originalX) > enemy.patrolDistance) {
                     enemy.direction *= -1;
                 }
@@ -1105,69 +1151,42 @@
             });
         }
         
-        function checkWinCondition() {
-            const flag = document.querySelector('.flag');
-            if (!flag) return;
-            
-            const flagRect = {
-                x: parseInt(flag.style.left),
-                y: parseInt(flag.style.top),
-                width: 40,
-                height: 60
-            };
-            
-            if (gameState.playerX < flagRect.x + flagRect.width &&
-                gameState.playerX + 32 > flagRect.x &&
-                gameState.playerY < flagRect.y + flagRect.height &&
-                gameState.playerY + 32 > flagRect.y) {
-                
-                gameWin();
-            }
-        }
-        
         function createParticles(x, y, color, count) {
             for (let i = 0; i < count; i++) {
                 const particle = document.createElement('div');
-                particle.className = 'particle';
+                particle.classList.add('particle');
                 particle.style.left = x + 'px';
                 particle.style.top = y + 'px';
-                particle.style.background = color;
-                particle.style.width = Math.random() * 6 + 4 + 'px';
+                particle.style.backgroundColor = color;
+                particle.style.width = `${Math.random() * 6 + 4}px`;
                 particle.style.height = particle.style.width;
                 
                 // Random direction and speed
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 3 + 1;
-                const xVel = Math.cos(angle) * speed;
-                const yVel = Math.sin(angle) * speed;
+                const duration = Math.random() * 1000 + 500;
+                
+                particle.style.transform = `translate(${Math.cos(angle) * 10}px, ${Math.sin(angle) * 10}px)`;
+                particle.style.opacity = '1';
                 
                 document.getElementById('gameWorld').appendChild(particle);
                 
-                let opacity = 1;
-                let size = 1;
-                let lifetime = 0;
-                
-                function animateParticle() {
-                    lifetime++;
-                    opacity -= 0.02;
-                    size -= 0.02;
-                    
-                    x += xVel;
-                    y += yVel;
-                    
-                    particle.style.left = x + 'px';
-                    particle.style.top = y + 'px';
-                    particle.style.opacity = opacity;
-                    particle.style.transform = `scale(${size})`;
-                    
-                    if (opacity > 0 && lifetime < 50) {
-                        requestAnimationFrame(animateParticle);
-                    } else {
-                        particle.remove();
+                // Animate particle
+                const animation = particle.animate([
+                    { 
+                        transform: `translate(0, 0)`, 
+                        opacity: 1 
+                    },
+                    { 
+                        transform: `translate(${Math.cos(angle) * speed * 50}px, ${Math.sin(angle) * speed * 50}px)`, 
+                        opacity: 0 
                     }
-                }
+                ], {
+                    duration: duration,
+                    easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
+                });
                 
-                requestAnimationFrame(animateParticle);
+                animation.onfinish = () => particle.remove();
             }
         }
         
@@ -1175,35 +1194,14 @@
             gameState.gameRunning = false;
             document.getElementById('finalScore').textContent = gameState.score;
             gameOverScreen.style.display = 'block';
-        }
-        
-        function gameWin() {
-            gameState.gameRunning = false;
             
-            // Calculate time bonus
-            const timeTaken = Math.floor((Date.now() - gameState.timeStarted) / 1000);
-            const timeBonus = Math.max(0, 300 - timeTaken) * 10;
-            
-            // Add coin bonus (10 points per coin)
-            const coinBonus = gameState.coinsCollected * 10;
-            
-            // Update score
-            gameState.score += timeBonus + coinBonus;
-            
-            document.getElementById('winScore').textContent = gameState.score;
-            gameWinScreen.style.display = 'block';
-            
-            // Win celebration particles
-            for (let i = 0; i < 50; i++) {
-                setTimeout(() => {
-                    createParticles(
-                        gameState.playerX + 16, 
-                        gameState.playerY + 16, 
-                        i % 2 === 0 ? '#FFD700' : '#FFFFFF', 
-                        5
-                    );
-                }, i * 100);
-            }
+            // Game over particles
+            createParticles(
+                gameState.playerX + 16, 
+                gameState.playerY + 16, 
+                '#FF0000', 
+                20
+            );
         }
         
         function restartGame() {
@@ -1236,8 +1234,6 @@
             scoreElement.textContent = '0';
             updateHealthDisplay();
             updateDashMeter();
-            
-            // Hide game over/win screens
             gameOverScreen.style.display = 'none';
             gameWinScreen.style.display = 'none';
             pauseScreen.style.display = 'none';
@@ -1245,18 +1241,28 @@
             // Reset player position
             player.style.left = gameState.playerX + 'px';
             player.style.top = gameState.playerY + 'px';
+            player.style.opacity = '1';
             
             // Reset camera
             gameWorld.style.transform = 'translateX(0)';
+            gameWorld.style.animation = '';
             
-            // Reset all game elements by reloading them
-            const gameWorld = document.getElementById('gameWorld');
-            const originalContent = gameWorld.innerHTML;
-            gameWorld.innerHTML = originalContent;
+            // Reset enemies
+            document.querySelectorAll('.enemy').forEach(enemy => enemy.classList.remove('defeated'));
+            
+            // Reset checkpoints
+            document.querySelectorAll('.checkpoint').forEach(checkpoint => {
+                checkpoint.classList.remove('active');
+            });
+            
+            // Reset coins
+            document.querySelectorAll('.coin').forEach(coin => {
+                coin.classList.remove('collected');
+                coin.style.display = 'block';
+            });
             
             // Reinitialize enemies and checkpoints
             const enemyElements = document.querySelectorAll('.enemy');
-            gameState.enemies = [];
             enemyElements.forEach((enemy, index) => {
                 gameState.enemies.push({
                     element: enemy,
@@ -1270,7 +1276,6 @@
             });
             
             const checkpointElements = document.querySelectorAll('.checkpoint');
-            gameState.checkpoints = [];
             checkpointElements.forEach((checkpoint, index) => {
                 gameState.checkpoints.push({
                     element: checkpoint,
@@ -1280,16 +1285,6 @@
                 });
             });
         }
-        
-        // Add fadeUpAndOut animation to style
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeUpAndOut {
-                0% { opacity: 1; transform: translateY(0); }
-                100% { opacity: 0; transform: translateY(-30px); }
-            }
-        `;
-        document.head.appendChild(style);
         
         // Game loop
         function gameLoop() {
@@ -1301,11 +1296,22 @@
                 checkHazards();
                 checkWinCondition();
             }
+            
             requestAnimationFrame(gameLoop);
         }
         
         // Start the game
         gameLoop();
+        
+        // Add fadeUpAndOut animation to styles
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeUpAndOut {
+                0% { transform: translateY(0); opacity: 1; }
+                100% { transform: translateY(-50px); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 </body>
 </html>
